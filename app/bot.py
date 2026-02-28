@@ -5,12 +5,13 @@ from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, ForceRe
 from telegram.constants import ParseMode
 from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, CallbackQueryHandler, ContextTypes, filters
 from app.config import *
+import app.config as config
 from app import database as db
 from app.services import locket, nextdns
 
 logger = logging.getLogger(__name__)
 
-request_queue = asyncio.Queue()
+request_queue = asyncio.PriorityQueue()
 pending_items = []
 queue_lock = asyncio.Lock()
 
@@ -51,9 +52,9 @@ async def update_pending_positions(app):
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
-    lang = db.get_lang(user_id) or DEFAULT_LANG
+    lang = await db.get_lang(user_id) or DEFAULT_LANG
     
-    if not db.get_user_usage(user_id):
+    if not await db.get_user_usage(user_id):
         pass 
 
     await update.message.reply_text(
@@ -67,7 +68,7 @@ async def setlang_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
-    lang = db.get_lang(user_id) or DEFAULT_LANG
+    lang = await db.get_lang(user_id) or DEFAULT_LANG
     
     help_text = T("help_msg", lang)
     if user_id == ADMIN_ID:
@@ -85,7 +86,7 @@ async def stats_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     if user_id != ADMIN_ID: return
 
-    stats = db.get_stats()
+    stats = await db.get_stats()
     msg = (
         f"{E_STAT} <b>SYSTEM STATISTICS</b>\n"
         f"━━━━━━━━━━━━━━━━━━━\n"
@@ -152,7 +153,7 @@ async def broadcast_worker(bot, users, text, chat_id, message_id):
 
 async def noti_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
-    lang = db.get_lang(user_id) or DEFAULT_LANG
+    lang = await db.get_lang(user_id) or DEFAULT_LANG
     
     if user_id != ADMIN_ID:
         return
@@ -162,7 +163,7 @@ async def noti_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("Usage: /noti {message}")
         return
 
-    users = db.get_all_users()
+    users = await db.get_all_users()
     if not users:
         await update.message.reply_text("No users found.")
         return
@@ -176,7 +177,7 @@ async def noti_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def reset_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
-    lang = db.get_lang(user_id) or DEFAULT_LANG
+    lang = await db.get_lang(user_id) or DEFAULT_LANG
     
     if user_id != ADMIN_ID:
         return
@@ -187,7 +188,7 @@ async def reset_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
     try:
         target_id = int(context.args[0])
-        db.reset_usage(target_id)
+        await db.reset_usage(target_id)
         await update.message.reply_text(T("admin_reset", lang).format(target_id))
     except ValueError:
         await update.message.reply_text("Invalid User ID")
@@ -205,10 +206,50 @@ async def set_donate_command(update: Update, context: ContextTypes.DEFAULT_TYPE)
         
     if photo:
         file_id = photo.file_id
-        db.set_config("donate_photo", file_id)
+        await db.set_config("donate_photo", file_id)
         await update.message.reply_text(f"✅ Updated Donate Photo ID:\n<code>{file_id}</code>", parse_mode=ParseMode.HTML)
     else:
         await update.message.reply_text("❌ Please reply to a photo with /setdonate to set it.")
+
+async def reload_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    if user_id != ADMIN_ID:
+        return
+    import app.config as config
+    success, msg = config.load_dynamic_config()
+    if success:
+         await update.message.reply_text(f"✅ Reload Success: {msg}")
+    else:
+         await update.message.reply_text(f"❌ Reload Failed: {msg}")
+
+async def addvip_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    if user_id != ADMIN_ID:
+        return
+    if not context.args or len(context.args) < 2:
+        await update.message.reply_text("Usage: /addvip {user_id} {days}")
+        return
+    try:
+        target_id = int(context.args[0])
+        days = int(context.args[1])
+        await db.set_vip(target_id, days)
+        await update.message.reply_text(f"✅ User <code>{target_id}</code> has been granted VIP for {days} days.", parse_mode=ParseMode.HTML)
+    except ValueError:
+        await update.message.reply_text("Invalid inputs. User ID and Days must be integers.")
+        
+async def rmvip_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    if user_id != ADMIN_ID:
+        return
+    if not context.args:
+        await update.message.reply_text("Usage: /rmvip {user_id}")
+        return
+    try:
+        target_id = int(context.args[0])
+        await db.set_vip(target_id, 0) # 0 days essentially un-VIPs them
+        await update.message.reply_text(f"✅ User <code>{target_id}</code> VIP status removed.", parse_mode=ParseMode.HTML)
+    except ValueError:
+        await update.message.reply_text("Invalid User ID.")
 
 async def show_language_select(update: Update):
     keyboard = [
@@ -229,7 +270,7 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     user_id = update.effective_user.id
     text = update.message.text.strip()
-    lang = db.get_lang(user_id) or DEFAULT_LANG
+    lang = await db.get_lang(user_id) or DEFAULT_LANG
 
     if "locket.cam/" in text:
         username = text.split("locket.cam/")[-1].split("?")[0]
@@ -246,7 +287,7 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
         
     # Admin bypass limit check
-    if user_id != ADMIN_ID and not db.check_can_request(user_id):
+    if user_id != ADMIN_ID and not await db.check_can_request(user_id):
         await msg.edit_text(T("limit_reached", lang), parse_mode=ParseMode.HTML)
         return
         
@@ -275,11 +316,11 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     data = query.data
     user_id = query.from_user.id
-    lang = db.get_lang(user_id) or DEFAULT_LANG
+    lang = await db.get_lang(user_id) or DEFAULT_LANG
 
     if data.startswith("setlang_"):
         new_lang = data.split("_")[1]
-        db.set_lang(user_id, new_lang)
+        await db.set_lang(user_id, new_lang)
         lang = new_lang
         await query.answer(f"Language: {new_lang}")
         await query.message.edit_text(
@@ -336,8 +377,8 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         uid = parts[1]
         username = parts[2] if len(parts) > 2 else uid
         
-        # Admin bypass limit check
-        if user_id != ADMIN_ID and not db.check_can_request(user_id):
+        is_vip = await db.check_is_vip(user_id)
+        if not is_vip and user_id != ADMIN_ID and not await db.check_can_request(user_id):
             try:
                 await query.answer(T("limit_reached", lang), show_alert=True)
             except:
@@ -355,34 +396,50 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             'username': username,
             'chat_id': query.message.chat_id,
             'message_id': query.message.message_id,
-            'lang': lang
+            'lang': lang,
+            'is_vip': is_vip
         }
         
+        priority = 0 if is_vip or user_id == ADMIN_ID else 1
+        
         async with queue_lock:
-            pending_items.append(item)
-            position = len(pending_items)
+            # Insert visually based on priority
+            if priority == 0:
+                # Find last VIP in pending_items to insert after
+                last_vip_idx = -1
+                for i, p_item in enumerate(pending_items):
+                    if p_item.get('is_vip', False):
+                        last_vip_idx = i
+                pending_items.insert(last_vip_idx + 1, item)
+                position = last_vip_idx + 2
+            else:
+                pending_items.append(item)
+                position = len(pending_items)
             ahead = position - 1
         
+        vip_tag = " [👑 VIP]" if is_vip else ""
         await query.edit_message_text(
-            T("queued", lang).format(username, position, ahead),
+            T("queued", lang).format(username, position, ahead) + vip_tag,
             parse_mode=ParseMode.HTML
         )
         
-        await request_queue.put(item)
+        await request_queue.put((priority, item))
         return
 
 async def queue_worker(app, worker_id):
-    # Select token based on worker ID (round-robin)
-    # worker_id is 1-based, so subtract 1
-    token_idx = (worker_id - 1) % len(TOKEN_SETS)
-    token_config = TOKEN_SETS[token_idx]
-    token_name = f"Token-{token_idx+1}"
-    
-    print(f"Worker #{worker_id} started using {token_name}...")
-    
     while True:
         try:
-            item = await request_queue.get()
+            # Refresh config checks
+            if len(config.TOKEN_SETS) == 0:
+                await asyncio.sleep(5)
+                continue
+                
+            token_idx = (worker_id - 1) % len(config.TOKEN_SETS)
+            token_config = config.TOKEN_SETS[token_idx]
+            token_name = token_config.get("name", f"Token-{token_idx+1}")
+            
+            # Unpack PriorityQueue tuple
+            priority, item = await request_queue.get()
             
             user_id = item['user_id']
             uid = item['uid']
@@ -390,6 +447,7 @@ async def queue_worker(app, worker_id):
             chat_id = item['chat_id']
             message_id = item['message_id']
             lang = item['lang']
+            is_vip = item.get('is_vip', False)
             
             async with queue_lock:
                 if item in pending_items:
@@ -416,7 +474,7 @@ async def queue_worker(app, worker_id):
                         logger.error(f"Edit msg error: {e}")
 
             # Double check limit before processing (unless admin)
-            if user_id != ADMIN_ID and not db.check_can_request(user_id):
+            if user_id != ADMIN_ID and not await db.check_can_request(user_id):
                 await edit(T("limit_reached", lang))
                 request_queue.task_done()
                 continue
@@ -452,13 +510,13 @@ async def queue_worker(app, worker_id):
             success, msg_result = await locket.inject_gold(uid, token_config, safe_log_callback)
             
             # Log request to DB
-            db.log_request(user_id, uid, "SUCCESS" if success else "FAIL")
+            await db.log_request(user_id, uid, "SUCCESS" if success else "FAIL")
             
             if success:
-                if user_id != ADMIN_ID:
-                    db.increment_usage(user_id)
+                if user_id != ADMIN_ID and not is_vip:
+                    await db.increment_usage(user_id)
                     
-                pid, link = await nextdns.create_profile(NEXTDNS_KEY, safe_log_callback)
+                pid, link = await nextdns.create_profile(config.NEXTDNS_KEY, safe_log_callback)
                 
                 dns_text = ""
                 if link:
@@ -483,7 +541,7 @@ async def queue_worker(app, worker_id):
                     pass
                 
                 try:
-                    current_photo = db.get_config("donate_photo", DONATE_PHOTO)
+                    current_photo = await db.get_config("donate_photo", DONATE_PHOTO)
                     await app.bot.send_photo(
                         chat_id=chat_id,
                         photo=current_photo,
@@ -519,6 +577,49 @@ def get_main_menu_keyboard(lang):
          InlineKeyboardButton(T("btn_help", lang), callback_data="menu_help")]
     ])
 
+async def token_health_check(app):
+    while True:
+        try:
+            logger.info("[HealthCheck] Running scheduled token validation...")
+            valid_tokens = []
+            removed_count = 0
+            
+            for token_config in config.TOKEN_SETS:
+                # Basic validation ping using locket services or a mock check if needed.
+                # Assuming locket services expose an async validation endpoint or
+                # using a lightweight endpoint
+                url = "https://api.locketcamera.com/v1/users/me"
+                headers = {
+                    "Authorization": f"Bearer {token_config.get('fetch_token')}",
+                    "User-Agent": "Locket/1.0.0"
+                }
+                
+                try:
+                     import aiohttp
+                     async with aiohttp.ClientSession() as session:
+                          async with session.get(url, headers=headers) as resp:
+                               if resp.status in [200, 403, 404]: # Assuming 401 is unauthorized
+                                    valid_tokens.append(token_config)
+                               else:
+                                    logger.warning(f"[HealthCheck] Token {token_config.get('name')} failed with status {resp.status}. Discarding.")
+                                    removed_count += 1
+                except Exception as e:
+                     logger.warning(f"[HealthCheck] Error checking token {token_config.get('name')}: {e}")
+                     # Be safe, keep it if network error, only drop on explicit 401/auth fail.
+                     valid_tokens.append(token_config)
+            
+            if removed_count > 0:
+                logger.warning(f"[HealthCheck] Removed {removed_count} dead tokens. {len(valid_tokens)} remaining.")
+                config.TOKEN_SETS = valid_tokens
+                # Optionally update num workers if needed.
+                
+            await asyncio.sleep(3600) # Check every hour
+        except asyncio.CancelledError:
+             break
+        except Exception as e:
+            logger.error(f"[HealthCheck] Critical error in health checker: {e}")
+            await asyncio.sleep(300)
+
 def run_bot():
     logging.basicConfig(
         format='%(message)s',
@@ -528,7 +629,7 @@ def run_bot():
     logging.getLogger("telegram").setLevel(logging.ERROR)
     logging.getLogger("aiohttp").setLevel(logging.ERROR)
 
-    app = ApplicationBuilder().token(BOT_TOKEN).build()
+    app = ApplicationBuilder().token(config.BOT_TOKEN).build()
     
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("setlang", setlang_command))
@@ -537,15 +638,22 @@ def run_bot():
     app.add_handler(CommandHandler("rs", reset_command))
     app.add_handler(CommandHandler("setdonate", set_donate_command))
     app.add_handler(CommandHandler("stats", stats_command))
+    app.add_handler(CommandHandler("reload", reload_command))
+    app.add_handler(CommandHandler("addvip", addvip_command))
+    app.add_handler(CommandHandler("rmvip", rmvip_command))
     
     app.add_handler(CallbackQueryHandler(callback_handler))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text))
     
     async def post_init(application):
+        await db.init_db()
         # Dynamically create workers based on config
-        for i in range(1, NUM_WORKERS + 1):
+        for i in range(1, config.NUM_WORKERS + 1):
             asyncio.create_task(queue_worker(application, i))
+            
+        # Start health check loop
+        asyncio.create_task(token_health_check(application))
 
     app.post_init = post_init
-    print(f"Bot is running... ({NUM_WORKERS} workers)")
+    print(f"Bot is running... ({config.NUM_WORKERS} workers)")
     app.run_polling()

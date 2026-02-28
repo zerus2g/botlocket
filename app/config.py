@@ -1,27 +1,52 @@
 import os
+import json
 
-BOT_TOKEN = os.environ.get("BOT_TOKEN", "")
-NEXTDNS_KEY = os.environ.get("NEXTDNS_KEY", "")
+CONFIG_FILE = "app/config.json"
 
-TOKEN_SETS = [
-    {
-        "fetch_token": "",
-        "app_transaction": "",
-        "hash_params": "",
-        "hash_headers": "",
-        "is_sandbox": True,
-    },
-    {
-        "fetch_token": "",
-        "app_transaction": "",
-        "hash_params": "",
-        "hash_headers": "",
-        "is_sandbox": False,
-    },
-]
+BOT_TOKEN = os.environ.get("BOT_TOKEN", "8553705581:AAENrlmYghSXIycqQQYjnUC8ZRgRf9yUb4A")
 
-ADMIN_ID = 6581326766
+NEXTDNS_KEY = []
+TOKEN_SETS = []
 NUM_WORKERS = 2
+
+def load_dynamic_config():
+    global NEXTDNS_KEY, TOKEN_SETS, NUM_WORKERS
+    try:
+        if not os.path.exists(CONFIG_FILE):
+             print(f"Warning: {CONFIG_FILE} not found. Creating default.")
+             default_data = {
+                 "NEXTDNS_KEYS": ["524dd1a750260bb3d3e99d25bded8868e8e4afba"],
+                 "TOKEN_SETS": []
+             }
+             with open(CONFIG_FILE, 'w', encoding='utf-8') as f:
+                 json.dump(default_data, f, indent=4)
+        
+        with open(CONFIG_FILE, 'r', encoding='utf-8') as f:
+            data = json.load(f)
+            
+            # Load NextDNS Keys (Support both single string and list for backward compatibility)
+            keys = data.get("NEXTDNS_KEYS", ["524dd1a750260bb3d3e99d25bded8868e8e4afba"])
+            if isinstance(keys, str):
+                NEXTDNS_KEY = [keys]
+            else:
+                NEXTDNS_KEY = keys
+                
+            # Load Tokens
+            TOKEN_SETS = data.get("TOKEN_SETS", [])
+            
+            # Set workers based on tokens available
+            NUM_WORKERS = max(1, len(TOKEN_SETS))
+            
+            return True, f"Loaded {len(TOKEN_SETS)} tokens and {len(NEXTDNS_KEY)} DNS keys."
+            
+    except Exception as e:
+        error_msg = f"Error loading {CONFIG_FILE}: {e}"
+        print(error_msg)
+        return False, error_msg
+
+load_dynamic_config()
+
+ADMIN_ID = 8394780963
 DONATE_PHOTO = "AgACAgUAAxkBAAEhBOdpjtu4_D_90mzmM3ax-jLUQbW7HwACjA5rGyK6eFQz2Vzy6zHTMwEAAwIAA3kAAzoE"
 
 E_LOADING = '<tg-emoji emoji-id="5350752364246606166">✍️</tg-emoji>'
@@ -42,12 +67,11 @@ E_CALENDAR = '<tg-emoji emoji-id="5413879192267805083">📅</tg-emoji>'
 E_IOS     = '<tg-emoji emoji-id="5350556204500263431">🍏</tg-emoji>'
 E_ANDROID = '<tg-emoji emoji-id="5303145396254563405">🤖</tg-emoji>'
 
-
 DEFAULT_LANG = "VI"
 
 TEXTS = {
     "VI": {
-        "welcome": f"{E_SUCCESS} <b>Locket Gold Activator</b>\n\nChào mừng! Vui lòng chọn ngôn ngữ hoặc sử dụng menu bên dưới.",
+        "welcome": f"{E_SUCCESS} <b>Locket Gold Activator VIP</b>\n\nChào mừng! Vui lòng chọn ngôn ngữ hoặc sử dụng menu bên dưới.",
         "menu_msg": f"{E_MENU} <b>Bảng Điều Khiển</b>\n\n👇 Bấm nút bên dưới để nhập Username kích hoạt Gold.",
         "btn_input": "🔑 Nhập User Locket",
         "btn_lang": "🌐 Đổi Ngôn Ngữ",
@@ -67,7 +91,7 @@ TEXTS = {
         ),
         "resolving": f"{E_LOADING} <b>Đang phân giải UID...</b>",
         "not_found": f"{E_ERROR} Không tìm thấy User.",
-        "limit_reached": f"{E_LIMIT} Đã đạt giới hạn request (5/5).",
+        "limit_reached": f"{E_LIMIT} Đã đạt giới hạn request của tài khoản Free (5/5).\nLiên hệ Admin để nâng cấp 👑 VIP!",
         "queue_almost": f"{E_LOADING} <b>Sắp đến lượt bạn!</b>\nCòn <b>2 người</b> nữa là đến lượt bạn. Hãy chuẩn bị sẵn sàng! 🚀",
         "admin_noti_sent": f"{E_SUCCESS} Đã gửi thông báo đến tất cả user.",
         "admin_reset": f"{E_SUCCESS} Đã reset lượt dùng cho user {{}}.",
@@ -100,10 +124,11 @@ TEXTS = {
             f"{E_ANDROID} <b>Android</b>: <code>{{}}.dns.nextdns.io</code>\n"
             f"(Cài đặt → Mạng → Private DNS)\n\n"
             f"{E_TIP} <b>Lưu ý</b>: Bắt buộc cài DNS để không bị mất Gold!"
-        )
+        ),
+        "req_vip_only": f"{E_LIMIT} Chức năng ưu tiên chỉ dành cho 👑 VIP."
     },
     "EN": {
-        "welcome": f"{E_SUCCESS} <b>Locket Gold Activator</b>\n\nWelcome! Please select your language or use the menu below.",
+        "welcome": f"{E_SUCCESS} <b>Locket Gold Activator VIP</b>\n\nWelcome! Please select your language or use the menu below.",
         "menu_msg": f"{E_MENU} <b>Control Panel</b>\n\n👇 Click the button below to enter Username.",
         "btn_input": "🔑 Input Locket User",
         "btn_lang": "🌐 Change Language",
@@ -123,7 +148,7 @@ TEXTS = {
         ),
         "resolving": f"{E_LOADING} <b>Resolving UID...</b>",
         "not_found": f"{E_ERROR} User not found.",
-        "limit_reached": f"{E_LIMIT} Daily limit reached (5/5).",
+        "limit_reached": f"{E_LIMIT} Free daily limit reached (5/5).\nContact Admin for a 👑 VIP upgrade!",
         "queue_almost": f"{E_LOADING} <b>Almost your turn!</b>\n<b>2 people</b> ahead of you. Get ready! 🚀",
         "admin_noti_sent": f"{E_SUCCESS} Notification sent to all users.",
         "admin_reset": f"{E_SUCCESS} Usage reset for user {{}}.",
@@ -156,7 +181,8 @@ TEXTS = {
             f"{E_ANDROID} <b>Android</b>: <code>{{}}.dns.nextdns.io</code>\n"
             f"(Settings → Network → Private DNS)\n\n"
             f"{E_TIP} <b>Note</b>: DNS is required to keep Gold active!"
-        )
+        ),
+        "req_vip_only": f"{E_LIMIT} Priority features are for 👑 VIP only."
     }
 }
 

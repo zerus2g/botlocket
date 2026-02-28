@@ -2,10 +2,21 @@ import aiohttp
 import asyncio
 import datetime
 
-async def create_profile(api_key, log_callback=None):
+nextdns_key_idx = 0
+
+async def create_profile(api_keys, log_callback=None):
+    global nextdns_key_idx
     def log(msg):
         if log_callback:
             log_callback(msg)
+
+    if not api_keys:
+         log("[!] Error: No NextDNS API Keys provided.")
+         return None, None
+
+    # Round Robin Key Selection
+    api_key = api_keys[nextdns_key_idx % len(api_keys)]
+    nextdns_key_idx += 1
 
     headers = {
         "X-Api-Key": api_key,
